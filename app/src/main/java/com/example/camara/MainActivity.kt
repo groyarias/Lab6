@@ -3,37 +3,79 @@ package com.example.camara
 import android.Manifest
 import android.app.Activity
 import android.app.Dialog
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.MediaPlayer
 import android.net.Uri
-import androidx.appcompat.app.AppCompatActivity
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.provider.MediaStore
 import android.telephony.SmsManager
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentManager
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.OnMapReadyCallback
+import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.MarkerOptions
 import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.android.synthetic.main.dialog_llamada.*
 import kotlinx.android.synthetic.main.dialog_mensaje.*
-import java.lang.Exception
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), OnMapReadyCallback, SensorEventListener {
+
+    private lateinit var map:GoogleMap
+    //Audio
+    private var isPlaying = false
+    private var mediaPlayer:MediaPlayer? = null
+
+    //GPS
+    private var mostrarMapa:Boolean = false
+
+    //Sensores
+    //Acelerometro
+    private var sensorManager: SensorManager? = null
+    private var accelerometerSensor: Sensor? = null
+    private var currentX:Float = 0.0f
+    private var currentY:Float = 0.0f
+    private var currentZ:Float = 0.0f
+    private var lastX:Float = 0.0f
+    private var lastY:Float = 0.0f
+    private var lastZ:Float = 0.0f
+    private var differenceX:Float = 0.0f
+    private var differenceY:Float = 0.0f
+    private var differenceZ:Float = 0.0f
+    private var itIsNotFirstTime:Boolean = false
+    private val shakeThreshold:Float = 10f
+    private var vibrator: Vibrator? = null
+    //Luz
+    private var brigthness:Sensor? = null
+
+
 
     companion object{
 
-        private val NUMERO_TELEFONICO = 88163040
-        private var isPlaying = false
-        private var mediaPlayer:MediaPlayer? = null
-
+        //Camara
         private const val CAMERA_PERMISSION_CODE = 1 //Para el permiso
         private const val CAMERA_REQUEST_CODE = 2 //Para el intent
 
+        //SMS-Llamada
+        private const val NUMERO_TELEFONICO = 88163040
         private const val SMS_PERMISSION_CODE = 3
-
         private const val CALL_PERMISSION_CODE = 4
 
     }
@@ -43,15 +85,19 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+
         handleCamera()
         handleMensaje()
         handleLlamada()
         handleAudio()
-
+        handleMapa()
+        handleSensorAcelerometro()
+        handleSensorLuz()
 
     }
 
-    fun handleCamera(){
+    private fun handleCamera(){
         btnCamera.setOnClickListener {
             //Verificar si se cuenta con persmisos
             if(ContextCompat.checkSelfPermission(
@@ -65,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun handleMensaje(){
+    private fun handleMensaje(){
         fabMensaje.setOnClickListener {
             if(ContextCompat.checkSelfPermission(
                     this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED){
@@ -77,7 +123,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun handleLlamada(){
+    private fun handleLlamada(){
         fabLlamar.setOnClickListener {
             if(ContextCompat.checkSelfPermission(
                     this, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED){
@@ -89,7 +135,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun handleAudio(){
+    private fun handleAudio(){
         mediaPlayer = MediaPlayer.create(this,R.raw.southofheaven)
 
         fabInstructivo.setOnClickListener {
@@ -115,6 +161,25 @@ class MainActivity : AppCompatActivity() {
                 return true
             }
         })
+
+    }
+
+    private fun handleMapa(){
+        createFragment()
+        btnUbicacion.setOnClickListener(View.OnClickListener {
+            mostrarOcultarMapa()
+        })
+        mostrarOcultarMapa()
+    }
+
+    private fun handleSensorAcelerometro(){
+        vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+        accelerometerSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    }
+
+    private fun handleSensorLuz() {
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        brigthness = sensorManager!!.getDefaultSensor(Sensor.TYPE_LIGHT)
 
     }
 
@@ -211,4 +276,93 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private fun createFragment() {
+        val mapFragment: SupportMapFragment = supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
+
+        mapFragment.getMapAsync(this)
+    }
+
+    override fun onMapReady(googleMap: GoogleMap) {
+        map = googleMap
+        createMarker()
+    }
+
+    private fun createMarker() {
+        val coordinates = LatLng(9.981157, -84.159648)
+        val marker = MarkerOptions().position(coordinates).title("Place To Work")
+        map.addMarker(marker)
+        map.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(coordinates, 15f),4000,null
+        )
+    }
+
+    fun mostrarOcultarMapa(){
+        if(mostrarMapa){
+            val fm: FragmentManager = supportFragmentManager
+            fm.beginTransaction()
+                .setCustomAnimations(android.R.animator.fade_in, android.R.animator.fade_out)
+                .show(fm.findFragmentById(R.id.map)!!)
+                .commit()
+        }else{
+            val fm: FragmentManager = supportFragmentManager
+            fm.beginTransaction()
+                .setCustomAnimations(android.R.animator.fade_in, android.R.animator.fade_out)
+                .hide(fm.findFragmentById(R.id.map)!!)
+                .commit()
+        }
+        mostrarMapa = !mostrarMapa
+    }
+
+    override fun onSensorChanged(event: SensorEvent?) {
+        if(event?.sensor?.type == Sensor.TYPE_LIGHT){
+            val light = event.values[0]
+            if(light.toInt() < 5){
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+            }else{
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+            }
+        }else if(event?.sensor?.type == Sensor.TYPE_ACCELEROMETER){
+            currentX = event?.values!![0]
+            currentY = event?.values!![1]
+            currentZ = event?.values!![2]
+
+            if(itIsNotFirstTime){
+                differenceX = Math.abs(lastX - currentX)
+                differenceY = Math.abs(lastY - currentY)
+                differenceZ = Math.abs(lastZ - currentZ)
+
+                if((differenceX > shakeThreshold && differenceY > shakeThreshold) ||
+                    (differenceX > shakeThreshold && differenceZ > shakeThreshold) ||
+                    (differenceY > shakeThreshold && differenceZ > shakeThreshold)){
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                    }else{
+                        vibrator?.vibrate(500)
+                    }
+                }
+            }
+
+            lastX = currentX
+            lastY = currentZ
+            lastZ = currentZ
+            itIsNotFirstTime = true
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        return
+    }
+
+    override fun onResume() {
+        super.onResume()
+        sensorManager?.registerListener(this,accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        sensorManager?.registerListener(this,brigthness,SensorManager.SENSOR_DELAY_NORMAL)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        sensorManager?.unregisterListener(this)
+    }
+
 }
