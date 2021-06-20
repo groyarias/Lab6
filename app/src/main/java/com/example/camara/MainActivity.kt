@@ -136,15 +136,15 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, SensorEventListene
     }
 
     private fun handleAudio(){
-        mediaPlayer = MediaPlayer.create(this,R.raw.southofheaven)
+        mediaPlayer = MediaPlayer.create(this,R.raw.instructivo)
 
         fabInstructivo.setOnClickListener {
             togglePlaying()
             if (isPlaying){
                 mediaPlayer?.start()
                 mediaPlayer?.setOnCompletionListener {
-                    /*isPlaying = false
-                    togglePlaying()*/
+                    //isPlaying = false
+                    togglePlaying()
                     Toast.makeText(this,"Instructivo finalizado",Toast.LENGTH_SHORT).show()
                 }
             }else{
@@ -336,8 +336,12 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, SensorEventListene
                     (differenceX > shakeThreshold && differenceZ > shakeThreshold) ||
                     (differenceY > shakeThreshold && differenceZ > shakeThreshold)){
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        limpiarCampos()
+                        Toast.makeText(this,"Campos borrados",Toast.LENGTH_SHORT).show()
                         vibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
                     }else{
+                        limpiarCampos()
+                        Toast.makeText(this,"Campos borrados",Toast.LENGTH_SHORT).show()
                         vibrator?.vibrate(500)
                     }
                 }
@@ -348,6 +352,13 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback, SensorEventListene
             lastZ = currentZ
             itIsNotFirstTime = true
         }
+    }
+
+    private fun limpiarCampos(){
+        tietNombre.text?.clear()
+        tietTelefono.text?.clear()
+        tietDireccion.text?.clear()
+        tietCiudad.text?.clear()
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
